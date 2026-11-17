@@ -1,9 +1,20 @@
-# Dory on Apple Silicon: a 2.6–4.5× llama.cpp fix
+# Dory on Apple Silicon: 2.6–4.5× faster than the model card's pinned build
 
-A two-file patch to the Dory-enabled llama.cpp branch
-([ggml-org/llama.cpp#30306](https://github.com/ggml-org/llama.cpp/pull/30306), pinned at `98a74c9`)
-that makes NVIDIA Nemotron Labs Dory 1.0 4B run fully on the Metal GPU. Outputs are byte-identical
-to the unpatched build.
+> [!NOTE]
+> **This bug is already fixed upstream.** The Dory llama.cpp PR
+> ([ggml-org/llama.cpp#30306](https://github.com/ggml-org/llama.cpp/pull/30306)) fixed it on
+> 2026-10-20 in commit `9e2f3be` ("fix incorrect CPU placement of Dory's BF16 scale tensors") by
+> brianchmielNV, using the same approach as the patch here.
+>
+> NVIDIA's model card, however, still tells Mac users to build revision `98a74c9`, which predates
+> that fix. If you follow the model card, you get the slow build measured below.
+>
+> **What to do:** build the PR's current head (or any revision at or after `9e2f3be`) instead of
+> `98a74c9`. The patch in this repo is a backport for anyone who needs to stay on `98a74c9`.
+
+I found and fixed the bug independently while benchmarking Dory on an M2 MacBook Air, before
+noticing the upstream fix. The numbers below compare `98a74c9` with and without the backport.
+Outputs are byte-identical.
 
 ## Results — MacBook Air M2, 8 GB
 
@@ -34,13 +45,14 @@ after:  sched_reserve: graph: nodes = 4555, splits = 2
 435 GPU↔CPU round trips per token. CUDA accepts the BF16 `MUL` check, which is likely why this
 doesn't show up on NVIDIA hardware.
 
-## The fix
+## The fix (backport of upstream `9e2f3be`)
 
 1. Declare those six tensors with `GGML_OP_CPY`, which is what the graph actually does with them.
 2. Add a `GGML_OP_CPY` case to `weight_buft_supported` in `src/llama-model-loader.cpp` that tests a
    cast to F32.
 
-See [`dory-metal-fix.patch`](dory-metal-fix.patch).
+Upstream `9e2f3be` makes the same two changes. See [`dory-metal-fix.patch`](dory-metal-fix.patch)
+to apply them to `98a74c9`.
 
 ## Reproduce
 
@@ -48,7 +60,8 @@ See [`dory-metal-fix.patch`](dory-metal-fix.patch).
 ./bench.sh /path/to/NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf
 ```
 
-The script fetches the pinned branch, applies the patch, builds with Metal and runs the benchmark.
+The script fetches `98a74c9` (the model card's pinned revision), applies the backport, builds with
+Metal and runs the benchmark.
 Get the GGUF from
 [nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF](https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF)
 (SHA-256 `96080be49ffd67b916018b7bdef8c484762576fb52780e10ab98ac4978a660e0`).
